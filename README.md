@@ -135,6 +135,6 @@ linkedin-connector/
 
 ## Notes
 
-- `config.json` and `tokens.json` are git-ignored — your credentials never leave your machine
+- Your credentials and tokens are stored locally and never leave your machine
 - Access tokens expire after 60 days and refresh automatically
 - Each user needs their own LinkedIn Developer app (free, takes ~5 minutes)
