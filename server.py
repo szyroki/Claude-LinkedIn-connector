@@ -15,6 +15,7 @@ from mcp.types import TextContent, Tool
 BASE = Path(__file__).parent
 CONFIG_FILE = BASE / "config.json"
 TOKEN_FILE = BASE / "tokens.json"
+POSTS_LOG = BASE / "posts_log.json"
 
 # ── load config ────────────────────────────────────────────────────────────
 with open(CONFIG_FILE) as f:
@@ -43,6 +44,24 @@ def load_tokens() -> dict | None:
 def save_tokens(tokens: dict):
     with open(TOKEN_FILE, "w") as f:
         json.dump(tokens, f, indent=2)
+
+
+def log_post(post_id: str, text: str, kind: str = "text"):
+    """Append a post entry to the local log."""
+    import time
+    log = []
+    if POSTS_LOG.exists():
+        with open(POSTS_LOG) as f:
+            log = json.load(f)
+    log.insert(0, {
+        "id": post_id,
+        "kind": kind,
+        "text": text[:120],
+        "created": int(time.time()),
+    })
+    log = log[:100]  # keep last 100
+    with open(POSTS_LOG, "w") as f:
+        json.dump(log, f, indent=2)
 
 
 def refresh_access_token(refresh_token: str) -> dict:
@@ -424,6 +443,7 @@ async def call_tool(name: str, arguments: dict):
 
         if resp.status_code in (200, 201):
             post_id = resp.headers.get("x-restli-id", resp.headers.get("X-RestLi-Id", "unknown"))
+            log_post(post_id, text, "text")
             return [TextContent(type="text", text=f"✓ Post published! ID: {post_id}")]
         else:
             return [TextContent(type="text", text=f"Error {resp.status_code}: {resp.text}")]
@@ -467,6 +487,7 @@ async def call_tool(name: str, arguments: dict):
 
         if resp.status_code in (200, 201):
             post_id = resp.headers.get("x-restli-id", resp.headers.get("X-RestLi-Id", "unknown"))
+            log_post(post_id, text, "image")
             return [TextContent(type="text", text=f"✓ Post with image published! ID: {post_id}")]
         else:
             return [TextContent(type="text", text=f"Error {resp.status_code}: {resp.text}")]
@@ -558,11 +579,13 @@ async def call_tool(name: str, arguments: dict):
         )
 
         if comment_resp.status_code in (200, 201):
+            log_post(post_id, text, "link")
             return [TextContent(type="text", text=(
                 f"✓ Post published and link added as first comment!\n"
                 f"Post ID: {post_id}"
             ))]
         else:
+            log_post(post_id, text, "link")
             return [TextContent(type="text", text=(
                 f"✓ Post published (ID: {post_id}) but failed to add link as comment "
                 f"({comment_resp.status_code}): {comment_resp.text}"
@@ -570,58 +593,26 @@ async def call_tool(name: str, arguments: dict):
 
     # ── list_my_posts ─────────────────────────────────────────────────────
     elif name == "list_my_posts":
+        import time as _time
         count = min(int(arguments.get("count", 10)), 20)
 
-        access_token = get_valid_token()
-        person_id = get_person_id(access_token)
-        author_urn = f"urn:li:person:{person_id}"
+        if not POSTS_LOG.exists():
+            return [TextContent(type="text", text="No posts logged yet. Posts made through this connector will appear here.")]
 
-        resp = requests.get(
-            f"{API_BASE}/v2/ugcPosts",
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "X-Restli-Protocol-Version": "2.0.0",
-            },
-            params={
-                "q": "authors",
-                "authors": f"List({author_urn})",
-                "count": count,
-                "sortBy": "LAST_MODIFIED",
-            },
-        )
+        with open(POSTS_LOG) as f:
+            log = json.load(f)
 
-        if resp.status_code == 401:
-            access_token = refresh_if_needed(access_token)
-            resp = requests.get(
-                f"{API_BASE}/v2/ugcPosts",
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "X-Restli-Protocol-Version": "2.0.0",
-                },
-                params={
-                    "q": "authors",
-                    "authors": f"List({author_urn})",
-                    "count": count,
-                    "sortBy": "LAST_MODIFIED",
-                },
-            )
-
-        if resp.status_code not in (200, 201):
-            return [TextContent(type="text", text=f"Error {resp.status_code}: {resp.text}")]
-
-        elements = resp.json().get("elements", [])
-        if not elements:
-            return [TextContent(type="text", text="No posts found.")]
+        if not log:
+            return [TextContent(type="text", text="No posts logged yet.")]
 
         lines = []
-        for el in elements:
-            post_id = el.get("id", "unknown")
-            content = el.get("specificContent", {})
-            share = content.get("com.linkedin.ugc.ShareContent", {})
-            snippet = share.get("shareCommentary", {}).get("text", "")[:80]
-            if len(share.get("shareCommentary", {}).get("text", "")) > 80:
+        for entry in log[:count]:
+            ts = _time.strftime("%Y-%m-%d %H:%M", _time.localtime(entry.get("created", 0)))
+            kind = entry.get("kind", "text")
+            snippet = entry.get("text", "")
+            if len(snippet) == 120:
                 snippet += "…"
-            lines.append(f"ID: {post_id}\n    {snippet}")
+            lines.append(f"[{ts}] ({kind})\nID: {entry['id']}\n    {snippet}")
 
         return [TextContent(type="text", text="\n\n".join(lines))]
 

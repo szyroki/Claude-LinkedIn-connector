@@ -1,5 +1,6 @@
 config.json
 tokens.json
+posts_log.json
 server.log
 __pycache__/
 *.pyc
