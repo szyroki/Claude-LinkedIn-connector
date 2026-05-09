@@ -108,7 +108,13 @@ Once authenticated, you can just talk to Claude naturally:
 
 > "Add a comment to this post: [paste the LinkedIn post URL]"
 
+> "Post this to LinkedIn, and add this link as the first comment: [your text] / [link]"
+
+> "Show me my last 5 LinkedIn posts"
+
 To comment on a post, paste the post URL and Claude will extract the ID automatically. You can also use the `urn:li:share:...` ID returned when creating a post.
+
+**Links in posts:** LinkedIn reduces reach for posts that contain links in the body. Use `create_post_with_link` to post your text without a link, and the connector will automatically add the link as the first comment.
 
 **Note on images:** the image must be either a local file path on your computer or a public URL. Images dropped directly into the Cowork chat are not automatically saved to disk — tell Claude where the file is, or paste a URL.
 
@@ -119,7 +125,9 @@ To comment on a post, paste the post URL and Claude will extract the ID automati
 | `authenticate` | One-time OAuth login via browser |
 | `create_post` | Publish a text post |
 | `create_post_with_image` | Publish a post with an image (local file path or public URL) |
-| `add_comment` | Post a comment on a LinkedIn post |
+| `create_post_with_link` | Publish a text post and add the link as the first comment (avoids algorithm penalty) |
+| `list_my_posts` | List your recent posts with their IDs |
+| `add_comment` | Post a comment on a LinkedIn post by ID |
 | `get_profile` | Check which LinkedIn account is connected |
 
 ---

@@ -315,6 +315,48 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="create_post_with_link",
+            description=(
+                "Publish a LinkedIn post and immediately add the link as the first comment. "
+                "Use this instead of putting the link in the post body — LinkedIn's algorithm "
+                "reduces reach for posts that contain links."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Post body text (no link here).",
+                    },
+                    "link": {
+                        "type": "string",
+                        "description": "The URL to add as the first comment.",
+                    },
+                    "visibility": {
+                        "type": "string",
+                        "enum": ["PUBLIC", "CONNECTIONS"],
+                        "default": "PUBLIC",
+                    },
+                },
+                "required": ["text", "link"],
+            },
+        ),
+        Tool(
+            name="list_my_posts",
+            description="List your recent LinkedIn posts with their IDs. Useful for finding post IDs to comment on.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "count": {
+                        "type": "integer",
+                        "description": "Number of recent posts to return (default 10, max 20).",
+                        "default": 10,
+                    },
+                },
+                "required": [],
+            },
+        ),
+        Tool(
             name="get_profile",
             description="Return your LinkedIn display name and person ID.",
             inputSchema={"type": "object", "properties": {}, "required": []},
@@ -474,6 +516,114 @@ async def call_tool(name: str, arguments: dict):
             return [TextContent(type="text", text=f"✓ Comment posted!")]
         else:
             return [TextContent(type="text", text=f"Error {resp.status_code}: {resp.text}")]
+
+    # ── create_post_with_link ─────────────────────────────────────────────
+    elif name == "create_post_with_link":
+        text = arguments["text"]
+        link = arguments["link"]
+        visibility = arguments.get("visibility", "PUBLIC")
+
+        access_token = get_valid_token()
+        person_id = get_person_id(access_token)
+        author_urn = f"urn:li:person:{person_id}"
+
+        resp = _ugc_post(access_token, author_urn, text, visibility)
+
+        if resp.status_code == 401:
+            access_token = refresh_if_needed(access_token)
+            resp = _ugc_post(access_token, author_urn, text, visibility)
+
+        if resp.status_code not in (200, 201):
+            return [TextContent(type="text", text=f"Error creating post {resp.status_code}: {resp.text}")]
+
+        post_id = resp.headers.get("x-restli-id", resp.headers.get("X-RestLi-Id", ""))
+        if not post_id:
+            return [TextContent(type="text", text="Post published but couldn't retrieve post ID to add comment.")]
+
+        # Post the link as first comment
+        from urllib.parse import quote
+        encoded_urn = quote(post_id, safe="")
+
+        comment_resp = requests.post(
+            f"{API_BASE}/v2/socialActions/{encoded_urn}/comments",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+                "X-Restli-Protocol-Version": "2.0.0",
+            },
+            json={
+                "actor": author_urn,
+                "message": {"text": link},
+            },
+        )
+
+        if comment_resp.status_code in (200, 201):
+            return [TextContent(type="text", text=(
+                f"✓ Post published and link added as first comment!\n"
+                f"Post ID: {post_id}"
+            ))]
+        else:
+            return [TextContent(type="text", text=(
+                f"✓ Post published (ID: {post_id}) but failed to add link as comment "
+                f"({comment_resp.status_code}): {comment_resp.text}"
+            ))]
+
+    # ── list_my_posts ─────────────────────────────────────────────────────
+    elif name == "list_my_posts":
+        count = min(int(arguments.get("count", 10)), 20)
+
+        access_token = get_valid_token()
+        person_id = get_person_id(access_token)
+        author_urn = f"urn:li:person:{person_id}"
+
+        resp = requests.get(
+            f"{API_BASE}/v2/ugcPosts",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "X-Restli-Protocol-Version": "2.0.0",
+            },
+            params={
+                "q": "authors",
+                "authors": f"List({author_urn})",
+                "count": count,
+                "sortBy": "LAST_MODIFIED",
+            },
+        )
+
+        if resp.status_code == 401:
+            access_token = refresh_if_needed(access_token)
+            resp = requests.get(
+                f"{API_BASE}/v2/ugcPosts",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "X-Restli-Protocol-Version": "2.0.0",
+                },
+                params={
+                    "q": "authors",
+                    "authors": f"List({author_urn})",
+                    "count": count,
+                    "sortBy": "LAST_MODIFIED",
+                },
+            )
+
+        if resp.status_code not in (200, 201):
+            return [TextContent(type="text", text=f"Error {resp.status_code}: {resp.text}")]
+
+        elements = resp.json().get("elements", [])
+        if not elements:
+            return [TextContent(type="text", text="No posts found.")]
+
+        lines = []
+        for el in elements:
+            post_id = el.get("id", "unknown")
+            content = el.get("specificContent", {})
+            share = content.get("com.linkedin.ugc.ShareContent", {})
+            snippet = share.get("shareCommentary", {}).get("text", "")[:80]
+            if len(share.get("shareCommentary", {}).get("text", "")) > 80:
+                snippet += "…"
+            lines.append(f"ID: {post_id}\n    {snippet}")
+
+        return [TextContent(type="text", text="\n\n".join(lines))]
 
     # ── get_profile ───────────────────────────────────────────────────────
     elif name == "get_profile":
