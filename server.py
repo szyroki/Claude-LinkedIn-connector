@@ -297,6 +297,24 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="add_comment",
+            description="Post a comment on a LinkedIn post. Use the post ID returned by create_post or create_post_with_image (the full urn:li:share:... string).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "post_id": {
+                        "type": "string",
+                        "description": "The post URN, e.g. urn:li:share:1234567890",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "The comment text.",
+                    },
+                },
+                "required": ["post_id", "text"],
+            },
+        ),
+        Tool(
             name="get_profile",
             description="Return your LinkedIn display name and person ID.",
             inputSchema={"type": "object", "properties": {}, "required": []},
@@ -408,6 +426,52 @@ async def call_tool(name: str, arguments: dict):
         if resp.status_code in (200, 201):
             post_id = resp.headers.get("x-restli-id", resp.headers.get("X-RestLi-Id", "unknown"))
             return [TextContent(type="text", text=f"✓ Post with image published! ID: {post_id}")]
+        else:
+            return [TextContent(type="text", text=f"Error {resp.status_code}: {resp.text}")]
+
+    # ── add_comment ───────────────────────────────────────────────────────
+    elif name == "add_comment":
+        post_id = arguments["post_id"]
+        text = arguments["text"]
+
+        access_token = get_valid_token()
+        person_id = get_person_id(access_token)
+        actor_urn = f"urn:li:person:{person_id}"
+
+        # encode the share URN for use in the URL path
+        from urllib.parse import quote
+        encoded_urn = quote(post_id, safe="")
+
+        resp = requests.post(
+            f"{API_BASE}/v2/socialActions/{encoded_urn}/comments",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+                "X-Restli-Protocol-Version": "2.0.0",
+            },
+            json={
+                "actor": actor_urn,
+                "message": {"text": text},
+            },
+        )
+
+        if resp.status_code == 401:
+            access_token = refresh_if_needed(access_token)
+            resp = requests.post(
+                f"{API_BASE}/v2/socialActions/{encoded_urn}/comments",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                    "X-Restli-Protocol-Version": "2.0.0",
+                },
+                json={
+                    "actor": actor_urn,
+                    "message": {"text": text},
+                },
+            )
+
+        if resp.status_code in (200, 201):
+            return [TextContent(type="text", text=f"✓ Comment posted!")]
         else:
             return [TextContent(type="text", text=f"Error {resp.status_code}: {resp.text}")]
 
