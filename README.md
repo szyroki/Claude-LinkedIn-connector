@@ -106,6 +106,10 @@ Once authenticated, you can just talk to Claude naturally:
 
 > "Post this to LinkedIn with this image: https://example.com/image.jpg"
 
+> "Add a comment to this post: [paste the LinkedIn post URL]"
+
+To comment on a post, paste the post URL and Claude will extract the ID automatically. You can also use the `urn:li:share:...` ID returned when creating a post.
+
 **Note on images:** the image must be either a local file path on your computer or a public URL. Images dropped directly into the Cowork chat are not automatically saved to disk — tell Claude where the file is, or paste a URL.
 
 ### Available tools
@@ -115,6 +119,7 @@ Once authenticated, you can just talk to Claude naturally:
 | `authenticate` | One-time OAuth login via browser |
 | `create_post` | Publish a text post |
 | `create_post_with_image` | Publish a post with an image (local file path or public URL) |
+| `add_comment` | Post a comment on a LinkedIn post |
 | `get_profile` | Check which LinkedIn account is connected |
 
 ---
