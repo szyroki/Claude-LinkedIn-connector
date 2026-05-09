@@ -1,0 +1,6 @@
+config.json
+tokens.json
+server.log
+__pycache__/
+*.pyc
+add_mcp_config.command
