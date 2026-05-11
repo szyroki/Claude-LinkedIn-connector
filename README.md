@@ -15,8 +15,8 @@ Post to LinkedIn directly from a Cowork window. Supports text posts and image po
 ## Step 1 — Clone the repo
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/linkedin-connector.git
-cd linkedin-connector
+git clone https://github.com/szyroki/Claude-LinkedIn-connector.git
+cd Claude-LinkedIn-connector
 ```
 
 ---
